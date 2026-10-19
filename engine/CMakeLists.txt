@@ -11,6 +11,7 @@ endif()
 
 option(TE_BUILD_TESTS "Build unit tests" ON)
 option(TE_BUILD_BENCH "Build benchmark" ON)
+option(TE_BUILD_PYTHON "Build the trading_engine Python module (pybind11)" OFF)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -32,6 +33,24 @@ set_target_properties(te_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_executable(te_backtest apps/backtest_main.cpp)
 target_link_libraries(te_backtest PRIVATE te_core)
+
+if(TE_BUILD_PYTHON OR SKBUILD)
+  find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+  if(NOT pybind11_DIR)
+    execute_process(COMMAND ${Python_EXECUTABLE} -m pybind11 --cmakedir
+                    OUTPUT_VARIABLE pybind11_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+  endif()
+  find_package(pybind11 CONFIG REQUIRED)
+  pybind11_add_module(_core src/python/bindings.cpp)
+  target_link_libraries(_core PRIVATE te_core)
+  if(SKBUILD)
+    install(TARGETS _core LIBRARY DESTINATION trading_engine)
+  else()
+    # Dev build: drop the extension next to the Python sources so
+    # `PYTHONPATH=engine/python` works without installing.
+    set_target_properties(_core PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/trading_engine)
+  endif()
+endif()
 
 if(TE_BUILD_BENCH)
   add_executable(te_bench bench/bench_engine.cpp)

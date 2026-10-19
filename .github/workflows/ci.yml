@@ -6,25 +6,48 @@ on:
 
 jobs:
   engine:
+    name: C++ engine + Python research layer
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Configure
-        run: cmake -S engine -B engine/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Install toolchain and Python deps
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          pip install -r requirements-research.txt
+
+      - name: Configure (with Python bindings)
+        run: cmake -S engine -B engine/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTE_BUILD_PYTHON=ON
 
       - name: Build
         run: cmake --build engine/build
 
-      - name: Unit tests
+      - name: C++ unit tests
         run: ctest --test-dir engine/build --output-on-failure
 
-      - name: Smoke backtest on synthetic data
+      - name: Python tests (bindings + research)
+        run: python -m pytest tests/ -q
+
+      - name: Smoke test - CLI and quick report on synthetic data
         run: |
-          pip install numpy
-          python tools/generate_synthetic_trades.py --trades 200000 --out data/trades/SYNTH.csv
+          python tools/generate_synthetic_trades.py --trades 300000 --out data/trades/SYNTH.csv
           ./engine/build/te_backtest --data data/trades/SYNTH.csv --strategy market_maker --out results/mm
-          ./engine/build/te_backtest --data data/trades/SYNTH.csv --strategy momentum --out results/mom
+          PYTHONPATH=engine/python python -m research.report --data data/trades/SYNTH.csv --out results/report --quick
+
+      - name: Benchmark
+        run: ./engine/build/te_bench 2000000
+
+  wheel:
+    name: pip install ./engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ./engine
+      - run: python -c "import trading_engine as te; print(te.strategy_names())"

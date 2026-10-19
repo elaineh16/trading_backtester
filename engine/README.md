@@ -47,6 +47,22 @@ python tools/generate_synthetic_trades.py --trades 1000000
 
 Each run writes `summary.json`, `fills.csv` and `equity.csv`. `--help` lists all options.
 
+## Python bindings
+
+`pip install ./engine` (scikit-build-core + pybind11) installs the `trading_engine` package. For
+development, configure with `-DTE_BUILD_PYTHON=ON` and use `PYTHONPATH=engine/python`.
+
+```python
+import trading_engine as te
+trades = te.load_trades("data/trades/BTCUSDT-trades-2026-10-01.csv")
+res = te.backtest(trades, "momentum", {"bar_seconds": 15}, taker_bps=4, latency_ms=10, record_signals=True)
+res.metrics, res.fills, res.equity, res.signals   # dict + pandas DataFrames
+```
+
+* Trades are read straight from the DataFrame's numpy buffers: no copy into C++.
+* The GIL is released for the whole run, so `ThreadPoolExecutor` sweeps use every core.
+* Results match the CLI exactly (tested).
+
 ## Simulation model (what keeps the results honest)
 
 | Concern | How it's handled |
@@ -86,6 +102,8 @@ Parameters are passed as `--param key=value`; see each strategy's header for the
 ```
 include/engine/   public headers (types, engine, exchange, portfolio, strategies)
 src/              implementation
+src/python/       pybind11 bindings
+python/           trading_engine Python package
 apps/             te_backtest CLI
 bench/            throughput benchmark
 tests/            GoogleTest suite

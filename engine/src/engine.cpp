@@ -133,6 +133,7 @@ BacktestResult Engine::run(DataSource& source, Strategy& strategy) {
         now_ = trade.ts;
         first_ts = trade.ts;
         first_price = trade.price;
+        portfolio_.mark(trade.ts, trade.price);  // so the first equity sample has a valid mark
         next_equity_sample_ = trade.ts;
         next_publish_ = trade.ts;
     }

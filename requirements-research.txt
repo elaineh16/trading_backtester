@@ -1,0 +1,11 @@
+# Dependencies for the C++ engine's Python bindings and the research layer.
+# (requirements.txt is for the legacy Python daily-bar backtester.)
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+matplotlib>=3.7
+pybind11>=2.12
+pytest>=7.4
+nbformat>=5.9
+nbconvert>=7.0
+ipykernel>=6.25

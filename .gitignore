@@ -17,3 +17,7 @@ results/
 .DS_Store
 .vscode/
 .idea/
+
+# Built Python extension (dev build drops it next to the sources)
+engine/python/trading_engine/_core*.so
+*.egg-info/

@@ -1,180 +1,108 @@
-# Trading Strategy Backtester
+# Algorithmic Trading System
 
-> **In progress:** this project is evolving into an event-driven algorithmic trading system with a
-> C++ engine, tick-level crypto data, market-making and momentum strategies, and Redis + WebSocket
-> streaming. The new engine lives in [`engine/`](engine/README.md); the Python backtester below is
-> becoming its research and analysis layer.
-
-A comprehensive Python-based trading strategy backtesting framework for evaluating and optimizing algorithmic trading strategies.
-
-## Features
-
-- **Multiple Strategy Support**: Implement and test various trading strategies (Moving Averages, RSI, MACD, etc.)
-- **Historical Data Integration**: Support for CSV files and real-time data via yfinance
-- **Performance Analysis**: Comprehensive metrics including Sharpe ratio, drawdown, win rate
-- **Visualization**: Interactive charts and performance dashboards
-- **Jupyter Integration**: Notebooks for strategy development and analysis
-- **Modular Architecture**: Clean, extensible codebase for easy strategy development
-
-## Project Structure
+An event-driven trading system with a **C++ engine** for tick-level market data, strategy
+execution and portfolio tracking, plus a **Python research layer** (pybind11) for comparing
+strategies on historical crypto trades.
 
 ```
-trading-backtester/
-│── data/                # Store historical data
-│── strategies/          # Your trading strategies
-│── backtester/          # Core backtesting engine
-│── analysis/            # Performance evaluation + visualizations
-│── notebooks/           # Jupyter notebooks for exploration
-│── main.py              # Entry point
-│── requirements.txt     # Dependencies
-│── README.md            # Project overview
+ Binance trade dumps ──┐                                     ┌──► research/ (pandas, matplotlib)
+ (or a live feed)      │   ┌───────────────────────────┐     │      sweeps · out-of-sample tests
+                       ├──►│  C++ event-driven engine  │─────┤      cost sensitivity · notebook
+ synthetic tape ───────┘   │  event queue · simulated  │     │
+                           │  exchange · portfolio ·   │     └──► te_backtest CLI
+                           │  risk · strategies        │
+                           └─────────────┬─────────────┘
+                                         │ EventSink: orders, fills, signals, portfolio
+                                         ▼
+                                Redis → WebSocket dashboard   (next milestone)
 ```
 
-## Installation
+## Highlights
 
-1. Clone the repository:
+* **Event-driven C++20 engine** ([`engine/`](engine/README.md)). It merges the trade stream with scheduled
+  events (order activation after latency, cancels, timers) in strict timestamp order.
+  Deterministic, and **~9M trades/s** for the market maker on one core.
+* **Simulation details that matter for realistic results.** Order and cancel latency, a queue-position fill model,
+  maker/taker fees, slippage and pre-trade risk limits. Unit tests prove that no order fills on the trade
+  that triggered it (no look-ahead).
+* **Two opposite strategies.** An inventory-skewed market maker (Avellaneda–Stoikov style) and an
+  EMA momentum strategy, compared head-to-head on the same tape and the same costs.
+* **Overfitting checks.** Parameters are chosen on one time window and judged on a later, untouched one.
+  The report shows how well in-sample rankings predict out-of-sample ones.
+* **Python bindings.** Numpy arrays are read in place, and the GIL is released during a run, so parameter
+  sweeps run in parallel threads (~350 backtests over 2M trades in ~15 s on 2 cores).
+* **Tested and automated.** 31 GoogleTest + 15 pytest cases, and CI that builds, tests,
+  benchmarks and runs a smoke report.
+
+## Quick start
+
 ```bash
-git clone <repository-url>
-cd trading-backtester
+pip install -r requirements-research.txt
+cmake -S engine -B engine/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTE_BUILD_PYTHON=ON
+cmake --build engine/build && ctest --test-dir engine/build
+
+# Real data: Binance public archive, no API key (BTCUSDT is ~1-3M trades/day)
+python tools/download_binance_trades.py --symbol BTCUSDT --start 2026-10-01 --end 2026-10-07
+
+# Full study: sweeps, out-of-sample comparison, cost sensitivity -> results/report/REPORT.md
+PYTHONPATH=engine/python python -m research.report --data data/trades/BTCUSDT-trades-2026-10-01.csv
+
+# Single backtest from the CLI
+./engine/build/te_backtest --data data/trades/BTCUSDT-trades-2026-10-01.csv --strategy market_maker --out results/mm
 ```
 
-2. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+No data yet? `python tools/generate_synthetic_trades.py --trades 2000000` makes a synthetic tape that
+exercises the whole pipeline. It is not market data, so don't read anything into its results.
+
+From Python:
+
+```python
+import trading_engine as te
+trades = te.load_trades("data/trades/BTCUSDT-trades-2026-10-01.csv")   # C++ parser
+res = te.backtest(trades, "market_maker", {"base_half_spread_bps": 3}, maker_bps=0.0, latency_ms=10)
+res.metrics["total_pnl"], res.fills, res.equity
 ```
 
-3. Install dependencies:
+## Research
+
+[`notebooks/02_strategy_comparison.ipynb`](notebooks/02_strategy_comparison.ipynb) walks through the
+whole study: what the market maker's quotes look like up close, parameter heatmaps, the
+in-sample vs out-of-sample check, the head-to-head comparison, and how results depend on fees and latency.
+It uses the first Binance file found in `data/trades/` and falls back to the synthetic tape.
+
+## Repository layout
+
+```
+engine/                C++ engine (CMake): include/, src/, apps/te_backtest, bench/, tests/ (GoogleTest)
+engine/python/         trading_engine Python package (pybind11 bindings; `pip install ./engine`)
+research/              experiments.py (sweeps, train/test), plotting.py, report.py (CLI)
+tools/                 Binance trade downloader, synthetic tape generator
+notebooks/             02_strategy_comparison.ipynb (+ the script that builds it)
+tests/                 pytest suite for the bindings and research layer
+backtester/, strategies/, analysis/, main.py   legacy daily-bar Python backtester
+```
+
+## Roadmap
+
+- [x] Event-driven C++ engine, simulated exchange, portfolio, risk limits
+- [x] Market-making and momentum strategies, tested against look-ahead
+- [x] Python bindings, parameter sweeps, out-of-sample validation, notebook
+- [ ] Live Binance WebSocket feed into the same engine
+- [ ] Redis pub/sub + cache for signals and portfolio state
+- [ ] WebSocket gateway and live dashboard; tick-to-browser latency measurement
+- [ ] Docker Compose for the full stack
+
+## Legacy daily-bar backtester
+
+The original Python backtester (moving-average, RSI and MACD strategies on daily OHLCV CSVs)
+still works:
+
 ```bash
 pip install -r requirements.txt
-```
-
-## Quick Start
-
-1. **List available strategies**:
-```bash
 python main.py --list-strategies
+python main.py --strategy moving_average --data data/TSLA.csv
 ```
-
-2. **Run a backtest**:
-```bash
-python main.py --strategy moving_average --data data/AAPL.csv
-```
-
-3. **Run with custom parameters**:
-```bash
-python main.py --strategy rsi --data data/SPY.csv --start-date 2020-01-01 --initial-capital 50000
-```
-
-## Usage Examples
-
-### Basic Backtest
-```bash
-python main.py --strategy moving_average --data data/AAPL.csv --initial-capital 100000
-```
-
-### Advanced Backtest with Date Range
-```bash
-python main.py \
-    --strategy rsi \
-    --data data/SPY.csv \
-    --start-date 2020-01-01 \
-    --end-date 2023-12-31 \
-    --initial-capital 100000 \
-    --commission 0.001 \
-    --output results.json
-```
-
-### List All Strategies
-```bash
-python main.py --list-strategies
-```
-
-## Strategy Development
-
-### Creating a New Strategy
-
-1. Create a new file in `strategies/` directory
-2. Implement the `BaseStrategy` interface
-3. Define your entry/exit logic
-4. Register the strategy in the strategy loader
-
-Example strategy structure:
-```python
-from strategies.base_strategy import BaseStrategy
-
-class MyStrategy(BaseStrategy):
-    def __init__(self, parameters):
-        super().__init__(parameters)
-    
-    def generate_signals(self, data):
-        # Implement your signal generation logic
-        pass
-    
-    def calculate_position_size(self, signal, portfolio):
-        # Implement position sizing logic
-        pass
-```
-
-## Data Format
-
-The backtester expects CSV files with the following columns:
-- `Date`: Date in YYYY-MM-DD format
-- `Open`: Opening price
-- `High`: Highest price of the day
-- `Low`: Lowest price of the day
-- `Close`: Closing price
-- `Volume`: Trading volume
-
-## Performance Metrics
-
-The backtester calculates the following metrics:
-- **Total Return**: Overall percentage return
-- **Annualized Return**: Yearly return rate
-- **Sharpe Ratio**: Risk-adjusted return measure
-- **Maximum Drawdown**: Largest peak-to-trough decline
-- **Win Rate**: Percentage of profitable trades
-- **Total Trades**: Number of executed trades
-
-## Jupyter Notebooks
-
-Explore the `notebooks/` directory for:
-- Strategy development examples
-- Data analysis workflows
-- Performance visualization
-- Risk analysis
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Implement your changes
-4. Add tests
-5. Submit a pull request
-
-## Testing
-
-Run the test suite:
-```bash
-pytest tests/
-```
-
-Run with coverage:
-```bash
-pytest --cov=backtester --cov=strategies --cov=analysis tests/
-```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Disclaimer
 
-This software is for educational and research purposes only. Past performance does not guarantee future results. Always do your own research and consider consulting with a financial advisor before making investment decisions.
-
-## Support
-
-For questions and support:
-- Create an issue on GitHub
-- Check the documentation in the `notebooks/` directory
-- Review example strategies in the `strategies/` directory
+For educational and research purposes only. Backtest results do not guarantee future performance.
