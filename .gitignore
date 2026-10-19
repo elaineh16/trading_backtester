@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# C++ build output
+engine/build/
+build/
+
+# Large / generated data and results
+data/trades/
+results/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

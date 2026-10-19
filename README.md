@@ -1,5 +1,10 @@
 # Trading Strategy Backtester
 
+> **In progress:** this project is evolving into an event-driven algorithmic trading system with a
+> C++ engine, tick-level crypto data, market-making and momentum strategies, and Redis + WebSocket
+> streaming. The new engine lives in [`engine/`](engine/README.md); the Python backtester below is
+> becoming its research and analysis layer.
+
 A comprehensive Python-based trading strategy backtesting framework for evaluating and optimizing algorithmic trading strategies.
 
 ## Features

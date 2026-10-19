@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: cmake -S engine -B engine/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build engine/build
+
+      - name: Unit tests
+        run: ctest --test-dir engine/build --output-on-failure
+
+      - name: Smoke backtest on synthetic data
+        run: |
+          pip install numpy
+          python tools/generate_synthetic_trades.py --trades 200000 --out data/trades/SYNTH.csv
+          ./engine/build/te_backtest --data data/trades/SYNTH.csv --strategy market_maker --out results/mm
+          ./engine/build/te_backtest --data data/trades/SYNTH.csv --strategy momentum --out results/mom
